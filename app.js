@@ -50,7 +50,8 @@ const state = {
   votes: [],
   finalWinner: null,
   saving: false,
-  starting: false
+  starting: false,
+  finished: false
 };
 
 let firebaseReady = false;
@@ -63,12 +64,18 @@ if (
   SITE_CONFIG?.firebase?.projectId
 ) {
   try {
-    const app = initializeApp(SITE_CONFIG.firebase);
-    auth = getAuth(app);
-    db = getFirestore(app);
+    const firebaseApp = initializeApp(
+      SITE_CONFIG.firebase
+    );
+
+    auth = getAuth(firebaseApp);
+    db = getFirestore(firebaseApp);
     firebaseReady = true;
   } catch (error) {
-    console.error("Firebase initialization failed:", error);
+    console.error(
+      "Firebase initialization failed:",
+      error
+    );
   }
 }
 
@@ -85,33 +92,40 @@ function showScreen(name) {
   });
 }
 
-function shuffle(list) {
-  const result = [...list];
+function shuffle(items) {
+  const result = [...items];
 
   if (
     typeof crypto !== "undefined" &&
     typeof crypto.getRandomValues === "function"
   ) {
     const random = new Uint32Array(result.length);
+
     crypto.getRandomValues(random);
 
     for (let i = result.length - 1; i > 0; i--) {
       const j = random[i] % (i + 1);
-      [result[i], result[j]] = [result[j], result[i]];
+
+      [result[i], result[j]] =
+        [result[j], result[i]];
     }
 
     return result;
   }
 
   for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
+    const j = Math.floor(
+      Math.random() * (i + 1)
+    );
+
+    [result[i], result[j]] =
+      [result[j], result[i]];
   }
 
   return result;
 }
 
-function createSessionId() {
+function createLocalSessionId() {
   if (
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"
@@ -124,13 +138,15 @@ function createSessionId() {
     .slice(2)}`;
 }
 
-async function ensureAnonymousUser() {
+async function ensureAnonymousSession() {
   if (!firebaseReady || !auth) {
     return null;
   }
 
   if (auth.currentUser?.isAnonymous) {
-    state.sessionId = auth.currentUser.uid;
+    state.sessionId =
+      auth.currentUser.uid;
+
     return auth.currentUser;
   }
 
@@ -138,47 +154,53 @@ async function ensureAnonymousUser() {
     return anonymousPromise;
   }
 
-  anonymousPromise = signInAnonymously(auth)
-    .then((credential) => {
-      state.sessionId = credential.user.uid;
-      return credential.user;
-    })
-    .catch((error) => {
-      console.error(
-        "Anonymous authentication failed:",
-        error
-      );
-      return null;
-    })
-    .finally(() => {
-      anonymousPromise = null;
-    });
+  anonymousPromise =
+    (async () => {
+      try {
+        if (auth.currentUser) {
+          await signOut(auth);
+        }
+
+        const credential =
+          await signInAnonymously(auth);
+
+        state.sessionId =
+          credential.user.uid;
+
+        return credential.user;
+      } catch (error) {
+        console.error(
+          "Anonymous authentication failed:",
+          error
+        );
+
+        return null;
+      } finally {
+        anonymousPromise = null;
+      }
+    })();
 
   return anonymousPromise;
 }
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;"
-  })[char]);
-}
+function formatSeconds(value) {
+  const total =
+    Math.max(
+      0,
+      Math.round(
+        Number(value) || 0
+      )
+    );
 
-function formatSeconds(seconds) {
-  const total = Math.max(
-    0,
-    Math.round(Number(seconds) || 0)
-  );
+  const minutes =
+    Math.floor(total / 60);
 
-  const minutes = Math.floor(total / 60);
-  const secondsLeft = total % 60;
+  const seconds =
+    total % 60;
 
   return minutes
-    ? `${minutes}m ${secondsLeft}s`
-    : `${secondsLeft}s`;
+    ? `${minutes}m ${seconds}s`
+    : `${seconds}s`;
 }
 
 function formatDate(value) {
@@ -186,15 +208,67 @@ function formatDate(value) {
     return "—";
   }
 
-  if (typeof value.toDate === "function") {
-    return value.toDate().toLocaleString();
+  if (
+    typeof value.toDate ===
+    "function"
+  ) {
+    return value
+      .toDate()
+      .toLocaleString();
   }
 
-  const date = new Date(value);
+  const date =
+    new Date(value);
 
-  return Number.isNaN(date.getTime())
+  return Number.isNaN(
+    date.getTime()
+  )
     ? "—"
     : date.toLocaleString();
+}
+
+function getTimeValue(value) {
+  if (!value) {
+    return 0;
+  }
+
+  if (
+    typeof value.toMillis ===
+    "function"
+  ) {
+    return value.toMillis();
+  }
+
+  if (
+    typeof value.toDate ===
+    "function"
+  ) {
+    return value.toDate()
+      .getTime();
+  }
+
+  const date =
+    new Date(value);
+
+  return Number.isNaN(
+    date.getTime()
+  )
+    ? 0
+    : date.getTime();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(
+      /[&<>"']/g,
+      (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char])
+    );
 }
 
 function makePlaceholder(label) {
@@ -206,58 +280,125 @@ function makePlaceholder(label) {
           <stop offset="1" stop-color="#f1ece2"/>
         </linearGradient>
       </defs>
+
       <rect width="900" height="900" fill="url(#g)"/>
-      <circle cx="450" cy="340" r="120" fill="#7357e8" opacity=".18"/>
-      <path d="M160 700c80-170 500-170 580 0" fill="#7357e8" opacity=".15"/>
-      <text x="450" y="470" text-anchor="middle"
+
+      <circle
+        cx="450"
+        cy="340"
+        r="120"
+        fill="#7357e8"
+        opacity=".18"
+      />
+
+      <path
+        d="M160 700c80-170 500-170 580 0"
+        fill="#7357e8"
+        opacity=".15"
+      />
+
+      <text
+        x="450"
+        y="470"
+        text-anchor="middle"
         font-family="Arial,sans-serif"
         font-size="46"
         font-weight="700"
-        fill="#161514">${escapeHtml(label)}</text>
-      <text x="450" y="525" text-anchor="middle"
+        fill="#161514"
+      >
+        ${escapeHtml(label)}
+      </text>
+
+      <text
+        x="450"
+        y="525"
+        text-anchor="middle"
         font-family="Arial,sans-serif"
         font-size="24"
-        fill="#74706a">drop your real photo here</text>
+        fill="#74706a"
+      >
+        drop your real photo here
+      </text>
     </svg>
   `;
 
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function attachImageFallback(img, photo) {
-  img.onerror = null;
-  img.src = makePlaceholder(photo.label);
+function imageFallback(
+  image,
+  photo
+) {
+  image.onerror = null;
+  image.src =
+    makePlaceholder(
+      photo.label
+    );
 }
 
-function startNewRound(players) {
-  const shuffled = shuffle(players);
+function resetGame() {
+  state.round = 1;
 
-  state.players = shuffled;
+  state.players =
+    shuffle(photos);
+
+  state.winners = [];
+  state.pairs = [];
+  state.pairIndex = 0;
+  state.bye = null;
+  state.currentPair = null;
+  state.votes = [];
+  state.finalWinner = null;
+  state.saving = false;
+  state.finished = false;
+
+  createRound();
+}
+
+function createRound() {
+  state.players =
+    shuffle(state.players);
+
   state.winners = [];
   state.pairs = [];
   state.pairIndex = 0;
   state.bye = null;
   state.currentPair = null;
 
-  if (shuffled.length % 2 === 1) {
-    state.bye = shuffled[shuffled.length - 1];
-    shuffled.length -= 1;
+  if (
+    state.players.length % 2 === 1
+  ) {
+    state.bye =
+      state.players[
+        state.players.length - 1
+      ];
   }
 
-  for (let i = 0; i < shuffled.length; i += 2) {
+  const pairLimit =
+    state.bye
+      ? state.players.length - 1
+      : state.players.length;
+
+  for (
+    let i = 0;
+    i < pairLimit;
+    i += 2
+  ) {
     state.pairs.push([
-      shuffled[i],
-      shuffled[i + 1]
+      state.players[i],
+      state.players[i + 1]
     ]);
   }
 }
 
-function startGameRound() {
-  startNewRound(
-    state.round === 1
-      ? photos
-      : state.winners
-  );
+function beginRound() {
+  createRound();
+
+  if (state.bye) {
+    state.winners.push(
+      state.bye
+    );
+  }
 
   renderNextMatch();
 }
@@ -267,9 +408,14 @@ function renderNextMatch() {
     return;
   }
 
-  if (state.pairIndex < state.pairs.length) {
+  if (
+    state.pairIndex <
+    state.pairs.length
+  ) {
     state.currentPair =
-      state.pairs[state.pairIndex];
+      state.pairs[
+        state.pairIndex
+      ];
 
     renderBattle();
     return;
@@ -279,12 +425,12 @@ function renderNextMatch() {
 }
 
 function finishRound() {
-  if (state.bye) {
-    state.winners.push(state.bye);
-  }
+  if (
+    state.winners.length === 1
+  ) {
+    state.finalWinner =
+      state.winners[0];
 
-  if (state.winners.length === 1) {
-    state.finalWinner = state.winners[0];
     showWinner();
     return;
   }
@@ -292,22 +438,40 @@ function finishRound() {
   state.round += 1;
 
   if (state.round > 4) {
-    state.finalWinner = state.winners[0];
+    state.finalWinner =
+      state.winners[0];
+
     showWinner();
     return;
   }
 
-  startGameRound();
+  state.players =
+    [...state.winners];
+
+  beginRound();
 }
 
-function startGame() {
+async function startGame() {
   const input =
-    document.getElementById("nameInput");
+    document.getElementById(
+      "nameInput"
+    );
 
   const error =
-    document.getElementById("nameError");
+    document.getElementById(
+      "nameError"
+    );
 
-  if (!input || !error || state.starting) {
+  const button =
+    document.getElementById(
+      "startButton"
+    );
+
+  if (
+    !input ||
+    !error ||
+    state.starting
+  ) {
     return;
   }
 
@@ -316,76 +480,89 @@ function startGame() {
 
   error.textContent = "";
 
+  if (!name) {
+    error.textContent =
+      "Put your name in first 😭";
+
+    input.focus();
+
+    return;
+  }
+
   if (name.length < 2) {
     error.textContent =
       "At least 2 characters. I need to know who judged this.";
+
     return;
   }
 
   if (name.length > 40) {
     error.textContent =
       "Keep your name under 40 characters.";
+
     return;
   }
 
   state.starting = true;
 
-  if (firebaseReady) {
-    ensureAnonymousUser()
-      .then((user) => {
-        if (!user?.isAnonymous) {
-          throw new Error(
-            "Anonymous authentication failed."
-          );
-        }
+  if (button) {
+    button.disabled = true;
+  }
 
-        beginGame(name);
-      })
-      .catch((errorObject) => {
-        console.error(
-          "Game start failed:",
-          errorObject
+  try {
+    if (firebaseReady) {
+      const user =
+        await ensureAnonymousSession();
+
+      if (
+        !user ||
+        !user.isAnonymous
+      ) {
+        throw new Error(
+          "Anonymous Firebase authentication failed."
         );
+      }
+    } else {
+      state.sessionId =
+        createLocalSessionId();
+    }
 
-        error.textContent =
-          "Couldn't connect to the voting system. Try again.";
-      })
-      .finally(() => {
-        state.starting = false;
-      });
+    state.name = name;
+    state.startedAt =
+      Date.now();
 
-    return;
+    resetGame();
+
+    showScreen(
+      "battle"
+    );
+
+    renderNextMatch();
+  } catch (gameError) {
+    console.error(
+      "Game start failed:",
+      gameError
+    );
+
+    error.textContent =
+      "Couldn't connect to the voting system. Try again.";
+  } finally {
+    state.starting =
+      false;
+
+    if (button) {
+      button.disabled =
+        false;
+    }
   }
-
-  state.starting = false;
-  beginGame(name);
 }
 
-function beginGame(name) {
-  state.name = name;
-  state.startedAt = Date.now();
-  state.round = 1;
-  state.players = [];
-  state.winners = [];
-  state.pairs = [];
-  state.pairIndex = 0;
-  state.bye = null;
-  state.currentPair = null;
-  state.votes = [];
-  state.finalWinner = null;
-  state.saving = false;
-
-  if (!state.sessionId) {
-    state.sessionId =
-      createSessionId();
-  }
-
-  startGameRound();
-  showScreen("battle");
-}
-
-function chooseWinner(photoId) {
-  if (!state.currentPair) {
+function chooseWinner(
+  selectedId
+) {
+  if (
+    !state.currentPair
+  ) {
     return;
   }
 
@@ -395,48 +572,82 @@ function chooseWinner(photoId) {
   const second =
     state.currentPair[1];
 
-  let winner;
-  let loser;
+  let winner = null;
+  let loser = null;
 
-  if (photoId === first.id) {
+  if (
+    selectedId === first.id
+  ) {
     winner = first;
     loser = second;
-  } else if (photoId === second.id) {
+  }
+
+  if (
+    selectedId === second.id
+  ) {
     winner = second;
     loser = first;
-  } else {
+  }
+
+  if (
+    !winner ||
+    !loser
+  ) {
     return;
   }
 
-  const buttons =
-    document.querySelectorAll(
+  document
+    .querySelectorAll(
       "[data-photo-id]"
+    )
+    .forEach(
+      (button) => {
+        button.disabled =
+          true;
+      }
     );
-
-  buttons.forEach((button) => {
-    button.disabled = true;
-  });
 
   document
     .querySelector(
       `[data-photo-id="${winner.id}"]`
     )
-    ?.classList.add("picked");
+    ?.classList.add(
+      "picked"
+    );
 
   state.votes.push({
-    round: state.round,
-    match: state.votes.length + 1,
-    winnerId: winner.id,
-    winnerLabel: winner.label,
-    loserId: loser.id,
-    loserLabel: loser.label,
+    round:
+      state.round,
+
+    match:
+      state.votes.length + 1,
+
+    winnerId:
+      winner.id,
+
+    winnerLabel:
+      winner.label,
+
+    loserId:
+      loser.id,
+
+    loserLabel:
+      loser.label,
+
     timestamp:
-      new Date().toISOString()
+      new Date()
+        .toISOString()
   });
 
-  state.winners.push(winner);
-  state.pairIndex += 1;
-  state.currentPair = null;
+  state.winners.push(
+    winner
+  );
+
+  state.currentPair =
+    null;
+
+  state.pairIndex +=
+    1;
 
   window.setTimeout(
     renderNextMatch,
@@ -445,7 +656,9 @@ function chooseWinner(photoId) {
 }
 
 function renderBattle() {
-  if (!state.currentPair) {
+  if (
+    !state.currentPair
+  ) {
     return;
   }
 
@@ -454,7 +667,7 @@ function renderBattle() {
       "roundLabel"
     );
 
-  const battleTitle =
+  const title =
     document.getElementById(
       "battleTitle"
     );
@@ -476,7 +689,7 @@ function renderBattle() {
 
   if (
     !roundLabel ||
-    !battleTitle ||
+    !title ||
     !progressText ||
     !progressBar ||
     !grid
@@ -493,7 +706,7 @@ function renderBattle() {
   roundLabel.textContent =
     `ROUND ${state.round} OF 4`;
 
-  battleTitle.textContent =
+  title.textContent =
     state.round === 1
       ? "Okay, judge this."
       : state.round === 2
@@ -508,9 +721,13 @@ function renderBattle() {
   progressBar.style.width =
     `${Math.min(
       100,
-      (currentMatch /
-        Math.max(1, totalMatches)) *
-        100
+      (
+        currentMatch /
+        Math.max(
+          1,
+          totalMatches
+        )
+      ) * 100
     )}%`;
 
   grid.innerHTML = "";
@@ -518,9 +735,12 @@ function renderBattle() {
   state.currentPair.forEach(
     (photo, index) => {
       const button =
-        document.createElement("button");
+        document.createElement(
+          "button"
+        );
 
       button.type = "button";
+
       button.className =
         "photo-choice";
 
@@ -528,10 +748,16 @@ function renderBattle() {
         photo.id;
 
       const img =
-        document.createElement("img");
+        document.createElement(
+          "img"
+        );
 
-      img.src = photo.src;
-      img.alt = photo.label;
+      img.src =
+        photo.src;
+
+      img.alt =
+        photo.label;
+
       img.loading =
         index === 0
           ? "eager"
@@ -540,7 +766,7 @@ function renderBattle() {
       img.addEventListener(
         "error",
         (event) => {
-          attachImageFallback(
+          imageFallback(
             event.currentTarget,
             photo
           );
@@ -548,13 +774,17 @@ function renderBattle() {
       );
 
       const meta =
-        document.createElement("div");
+        document.createElement(
+          "div"
+        );
 
       meta.className =
         "photo-meta";
 
       const label =
-        document.createElement("span");
+        document.createElement(
+          "span"
+        );
 
       label.className =
         "photo-label";
@@ -563,7 +793,9 @@ function renderBattle() {
         photo.label;
 
       const tag =
-        document.createElement("span");
+        document.createElement(
+          "span"
+        );
 
       tag.className =
         "vote-tag";
@@ -598,16 +830,22 @@ function renderBattle() {
 }
 
 function showWinner() {
-  if (!state.finalWinner) {
+  if (
+    !state.finalWinner ||
+    state.finished
+  ) {
     return;
   }
+
+  state.finished = true;
 
   const elapsed =
     Math.max(
       0,
-      (Date.now() -
-        state.startedAt) /
-        1000
+      (
+        Date.now() -
+        state.startedAt
+      ) / 1000
     );
 
   const finishName =
@@ -637,12 +875,16 @@ function showWinner() {
 
   if (finishCount) {
     finishCount.textContent =
-      photos.length;
+      String(
+        photos.length
+      );
   }
 
   if (finishTime) {
     finishTime.textContent =
-      formatSeconds(elapsed);
+      formatSeconds(
+        elapsed
+      );
   }
 
   if (winnerCard) {
@@ -650,7 +892,9 @@ function showWinner() {
       "";
 
     const img =
-      document.createElement("img");
+      document.createElement(
+        "img"
+      );
 
     img.src =
       state.finalWinner.src;
@@ -661,7 +905,7 @@ function showWinner() {
     img.addEventListener(
       "error",
       (event) => {
-        attachImageFallback(
+        imageFallback(
           event.currentTarget,
           state.finalWinner
         );
@@ -669,19 +913,25 @@ function showWinner() {
     );
 
     const caption =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
 
     caption.className =
       "winner-caption";
 
     const label =
-      document.createElement("span");
+      document.createElement(
+        "span"
+      );
 
     label.textContent =
       state.finalWinner.label;
 
     const champion =
-      document.createElement("span");
+      document.createElement(
+        "span"
+      );
 
     champion.textContent =
       "🏆 champion";
@@ -697,44 +947,109 @@ function showWinner() {
     );
   }
 
-  showScreen("winner");
+  showScreen(
+    "winner"
+  );
 
-  saveResponse(elapsed);
+  saveResponse(
+    elapsed
+  );
 }
 
-function buildPayload(elapsed) {
+function buildPayload(
+  elapsed
+) {
   return {
-    name: state.name,
-    sessionId: state.sessionId,
+    name:
+      state.name,
+
+    sessionId:
+      state.sessionId,
+
     durationSeconds:
-      Math.round(elapsed),
-    totalPhotos: photos.length,
+      Math.max(
+        0,
+        Math.round(
+          elapsed
+        )
+      ),
+
+    totalPhotos:
+      photos.length,
+
     finalWinnerId:
-      state.finalWinner.id,
+      state.finalWinner?.id ||
+      null,
+
     finalWinnerLabel:
-      state.finalWinner.label,
-    votes: state.votes,
+      state.finalWinner?.label ||
+      null,
+
+    votes:
+      state.votes.map(
+        (vote) => ({
+          round:
+            vote.round,
+
+          match:
+            vote.match,
+
+          winnerId:
+            vote.winnerId,
+
+          winnerLabel:
+            vote.winnerLabel,
+
+          loserId:
+            vote.loserId,
+
+          loserLabel:
+            vote.loserLabel,
+
+          timestamp:
+            vote.timestamp
+        })
+      ),
+
     eliminatedByRound:
       state.votes.map(
         (vote) =>
           `${vote.loserLabel} lost to ${vote.winnerLabel} in Round ${vote.round}`
       ),
+
     browser:
-      navigator.userAgent
-        .slice(0, 500),
+      String(
+        navigator.userAgent ||
+        ""
+      ).slice(
+        0,
+        500
+      ),
+
     platform:
       String(
-        navigator.platform || ""
-      ).slice(0, 100),
+        navigator.platform ||
+        ""
+      ).slice(
+        0,
+        100
+      ),
+
     language:
       String(
-        navigator.language || ""
-      ).slice(0, 50),
+        navigator.language ||
+        ""
+      ).slice(
+        0,
+        50
+      ),
+
     screen:
       `${window.innerWidth}x${window.innerHeight}`.slice(
         0,
         30
       ),
+
     referrer:
       document.referrer
         ? document.referrer.slice(
@@ -745,12 +1060,95 @@ function buildPayload(elapsed) {
   };
 }
 
-async function saveResponse(elapsed) {
-  if (state.saving) {
+function validatePayload(
+  payload
+) {
+  if (
+    !payload ||
+    payload.totalPhotos !== 10 ||
+    !payload.finalWinnerId ||
+    !payload.finalWinnerLabel ||
+    !payload.sessionId
+  ) {
+    return false;
+  }
+
+  if (
+    !Array.isArray(
+      payload.votes
+    ) ||
+    payload.votes.length !== 9
+  ) {
+    return false;
+  }
+
+  const rounds =
+    payload.votes.map(
+      (vote) => vote.round
+    );
+
+  const expectedRounds = [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2,
+    2,
+    3,
+    4
+  ];
+
+  if (
+    JSON.stringify(
+      rounds
+    ) !==
+    JSON.stringify(
+      expectedRounds
+    )
+  ) {
+    return false;
+  }
+
+  for (
+    let i = 0;
+    i < payload.votes.length;
+    i++
+  ) {
+    const vote =
+      payload.votes[i];
+
+    if (
+      !vote ||
+      vote.match !==
+        i + 1 ||
+      !vote.winnerId ||
+      !vote.loserId ||
+      vote.winnerId ===
+        vote.loserId
+    ) {
+      return false;
+    }
+  }
+
+  return (
+    payload.votes[8]
+      .winnerId ===
+    payload.finalWinnerId
+  );
+}
+
+async function saveResponse(
+  elapsed
+) {
+  if (
+    state.saving
+  ) {
     return;
   }
 
-  state.saving = true;
+  state.saving =
+    true;
 
   const status =
     document.getElementById(
@@ -758,17 +1156,29 @@ async function saveResponse(elapsed) {
     );
 
   const payload =
-    buildPayload(elapsed);
+    buildPayload(
+      elapsed
+    );
 
-  let firestoreSaved =
-    false;
+  if (
+    !validatePayload(
+      payload
+    )
+  ) {
+    if (status) {
+      status.textContent =
+        "Something went wrong with the completed vote.";
+    }
 
-  let emailSent =
-    false;
+    state.saving =
+      false;
+
+    return;
+  }
 
   try {
     localStorage.setItem(
-      `pfp_response_${state.sessionId}`,
+      `pfp_response_${payload.sessionId}`,
       JSON.stringify({
         ...payload,
         submittedAt:
@@ -777,45 +1187,99 @@ async function saveResponse(elapsed) {
     );
   } catch (error) {
     console.warn(
-      "Local save failed:",
+      "Local storage save failed:",
       error
     );
   }
 
+  let firestoreSaved =
+    false;
+
+  let emailSent =
+    false;
+
   if (
     firebaseReady &&
-    db &&
-    auth
+    auth &&
+    db
   ) {
     try {
       const user =
-        await ensureAnonymousUser();
+        await ensureAnonymousSession();
 
       if (
         !user ||
         !user.isAnonymous
       ) {
         throw new Error(
-          "No anonymous Firebase session is available."
+          "Anonymous session unavailable."
         );
       }
 
-      const responseData = {
-        ...payload,
+      const data = {
+        name:
+          payload.name,
+
         sessionId:
           user.uid,
+
         submittedAt:
           serverTimestamp(),
+
+        durationSeconds:
+          payload.durationSeconds,
+
+        totalPhotos:
+          10,
+
+        finalWinnerId:
+          payload.finalWinnerId,
+
+        finalWinnerLabel:
+          payload.finalWinnerLabel,
+
+        votes:
+          payload.votes,
+
+        eliminatedByRound:
+          payload.eliminatedByRound,
+
+        browser:
+          payload.browser,
+
+        platform:
+          payload.platform,
+
+        language:
+          payload.language,
+
+        screen:
+          payload.screen,
+
+        referrer:
+          payload.referrer,
+
         savedAt:
           serverTimestamp()
       };
+
+      console.log(
+        "Saving Firestore response:",
+        {
+          uid: user.uid,
+          anonymous:
+            user.isAnonymous,
+          votes:
+            payload.votes.length
+        }
+      );
 
       await addDoc(
         collection(
           db,
           "responses"
         ),
-        responseData
+        data
       );
 
       firestoreSaved =
@@ -833,7 +1297,9 @@ async function saveResponse(elapsed) {
 
   if (
     endpoint &&
-    !String(endpoint).includes(
+    !String(
+      endpoint
+    ).includes(
       "YOUR_FORM_ID"
     )
   ) {
@@ -868,9 +1334,7 @@ async function saveResponse(elapsed) {
 
       formData.append(
         "totalPhotos",
-        String(
-          payload.totalPhotos
-        )
+        "10"
       );
 
       formData.append(
@@ -883,7 +1347,10 @@ async function saveResponse(elapsed) {
       formData.append(
         "responsesJSON",
         JSON.stringify(
-          payload,
+          {
+            ...payload,
+            submittedAt
+          },
           null,
           2
         )
@@ -893,11 +1360,14 @@ async function saveResponse(elapsed) {
         await fetch(
           endpoint,
           {
-            method: "POST",
+            method:
+              "POST",
+
             headers: {
               Accept:
                 "application/json"
             },
+
             body:
               formData
           }
@@ -913,61 +1383,36 @@ async function saveResponse(elapsed) {
     }
   }
 
-  if (!status) {
-    state.saving = false;
-    return;
-  }
-
-  if (
-    firestoreSaved &&
-    emailSent
-  ) {
-    status.textContent =
-      "Saved + sent. Your verdict has officially been delivered 👀";
-  } else if (
-    firestoreSaved
-  ) {
-    status.textContent =
-      "Saved. Your verdict is in the scoreboard.";
-  } else if (
-    emailSent
-  ) {
-    status.textContent =
-      "Email sent, but the scoreboard could not save your vote.";
-  } else {
-    status.textContent =
-      "Your verdict could not be saved.";
-  }
-
-  state.saving = false;
-}
-
-function sortRows(rows) {
-  return [...rows].sort(
-    (a, b) => {
-      const aTime =
-        typeof a.savedAt?.toMillis ===
-        "function"
-          ? a.savedAt.toMillis()
-          : new Date(
-              a.savedAt ||
-                a.submittedAt ||
-                0
-            ).getTime();
-
-      const bTime =
-        typeof b.savedAt?.toMillis ===
-        "function"
-          ? b.savedAt.toMillis()
-          : new Date(
-              b.savedAt ||
-                b.submittedAt ||
-                0
-            ).getTime();
-
-      return bTime - aTime;
+  if (status) {
+    if (
+      firestoreSaved &&
+      emailSent
+    ) {
+      status.textContent =
+        "Saved + sent. Your verdict has officially been delivered 👀";
+    } else if (
+      firestoreSaved
+    ) {
+      status.textContent =
+        "Saved. Your verdict is in the scoreboard.";
+    } else if (
+      emailSent
+    ) {
+      status.textContent =
+        "Email sent, but the scoreboard could not save your vote.";
+    } else if (
+      firebaseReady
+    ) {
+      status.textContent =
+        "Firebase blocked the scoreboard save. Check the published Firestore Rules.";
+    } else {
+      status.textContent =
+        "Your verdict was saved on this browser.";
     }
-  );
+  }
+
+  state.saving =
+    false;
 }
 
 async function loginDev() {
@@ -1015,6 +1460,7 @@ async function loginDev() {
   ) {
     error.textContent =
       "Enter both the developer email and password.";
+
     return;
   }
 
@@ -1025,28 +1471,48 @@ async function loginDev() {
 
   try {
     if (auth.currentUser) {
-      await signOut(auth);
+      await signOut(
+        auth
+      );
     }
 
-    await signInWithEmailAndPassword(
-      auth,
-      emailValue,
-      passwordValue
-    );
+    const credential =
+      await signInWithEmailAndPassword(
+        auth,
+        emailValue,
+        passwordValue
+      );
+
+    if (
+      !credential.user ||
+      credential.user.isAnonymous
+    ) {
+      throw new Error(
+        "Developer account authentication failed."
+      );
+    }
 
     showScreen(
       "dashboard"
     );
 
     await loadDashboard();
-  } catch (errorObject) {
+  } catch (loginError) {
     console.error(
       "Developer login failed:",
-      errorObject
+      loginError
     );
 
-    error.textContent =
-      "Login failed. Check your developer email and password.";
+    if (
+      loginError?.code ===
+      "auth/invalid-credential"
+    ) {
+      error.textContent =
+        "Wrong developer email or password.";
+    } else {
+      error.textContent =
+        "Developer login failed.";
+    }
   } finally {
     if (button) {
       button.disabled =
@@ -1086,10 +1552,13 @@ async function loadDashboard() {
   ) {
     summary.innerHTML =
       `<div class="empty-state">Firebase is not configured.</div>`;
+
     trends.innerHTML =
       "";
+
     responses.innerHTML =
       "";
+
     return;
   }
 
@@ -1102,10 +1571,13 @@ async function loadDashboard() {
   ) {
     summary.innerHTML =
       `<div class="empty-state">Developer authentication is required.</div>`;
+
     trends.innerHTML =
       "";
+
     responses.innerHTML =
       "";
+
     return;
   }
 
@@ -1122,14 +1594,25 @@ async function loadDashboard() {
       );
 
     const rows =
-      sortRows(
-        snapshot.docs.map(
+      snapshot.docs
+        .map(
           (doc) => ({
-            id: doc.id,
+            id:
+              doc.id,
             ...doc.data()
           })
         )
-      );
+        .sort(
+          (a, b) =>
+            getTimeValue(
+              b.savedAt ||
+              b.submittedAt
+            ) -
+            getTimeValue(
+              a.savedAt ||
+              a.submittedAt
+            )
+        );
 
     renderDashboard(
       rows
@@ -1141,7 +1624,7 @@ async function loadDashboard() {
     );
 
     summary.innerHTML =
-      `<div class="empty-state">Could not load the scoreboard. Check the deployed Firebase Rules.</div>`;
+      `<div class="empty-state">Scoreboard access was denied. Make sure your developer UID is correct and these rules are published in Firebase.</div>`;
 
     trends.innerHTML =
       "";
@@ -1151,7 +1634,9 @@ async function loadDashboard() {
   }
 }
 
-function renderDashboard(rows) {
+function renderDashboard(
+  rows
+) {
   const summary =
     document.getElementById(
       "dashboardSummary"
@@ -1256,7 +1741,18 @@ function renderDashboard(rows) {
     );
 
   const leader =
-    ranking[0];
+    rows.length
+      ? ranking[0]
+      : null;
+
+  const maxWins =
+    Math.max(
+      1,
+      ...ranking.map(
+        (item) =>
+          item.wins
+      )
+    );
 
   summary.innerHTML = `
     <div class="stat-card">
@@ -1297,15 +1793,6 @@ function renderDashboard(rows) {
     </div>
   `;
 
-  const maxWins =
-    Math.max(
-      1,
-      ...ranking.map(
-        (item) =>
-          item.wins
-      )
-    );
-
   trends.innerHTML = `
     <div class="section-title">
       Who is winning right now?
@@ -1315,46 +1802,51 @@ function renderDashboard(rows) {
       ${
         ranking
           .map(
-            (item, index) => `
-              <div class="trend-row">
-                <div class="rank">
-                  #${index + 1}
-                </div>
+            (item, index) => {
+              const winRate =
+                item.appearances
+                  ? Math.round(
+                      (
+                        item.wins /
+                        item.appearances
+                      ) *
+                      100
+                    )
+                  : 0;
 
-                <div class="trend-main">
-                  <div class="trend-name">
-                    ${escapeHtml(
-                      item.label
-                    )}
+              return `
+                <div class="trend-row">
+                  <div class="rank">
+                    #${index + 1}
                   </div>
 
-                  <div class="bar-track">
-                    <div
-                      class="bar-fill"
-                      style="width:${Math.round(
-                        (item.wins /
-                          maxWins) *
+                  <div class="trend-main">
+                    <div class="trend-name">
+                      ${escapeHtml(
+                        item.label
+                      )}
+                    </div>
+
+                    <div class="bar-track">
+                      <div
+                        class="bar-fill"
+                        style="width:${Math.round(
+                          (
+                            item.wins /
+                            maxWins
+                          ) *
                           100
-                      )}%"
-                    ></div>
+                        )}%"
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div class="trend-number">
+                    ${item.wins} wins · ${winRate}%
                   </div>
                 </div>
-
-                <div class="trend-number">
-                  ${
-                    item.wins
-                  } wins · ${
-                    item.appearances
-                      ? Math.round(
-                          (item.wins /
-                            item.appearances) *
-                            100
-                        )
-                      : 0
-                  }%
-                </div>
-              </div>
-            `
+              `;
+            }
           )
           .join("")
       }
@@ -1389,7 +1881,7 @@ function renderDashboard(rows) {
                           <strong>
                             ${escapeHtml(
                               row.name ||
-                                "Unknown"
+                              "Unknown"
                             )}
                           </strong>
                         </td>
@@ -1397,7 +1889,7 @@ function renderDashboard(rows) {
                         <td>
                           ${escapeHtml(
                             row.finalWinnerLabel ||
-                              "—"
+                            "—"
                           )}
                         </td>
 
@@ -1409,9 +1901,7 @@ function renderDashboard(rows) {
                               )
                                 ? row.votes
                                     .map(
-                                      (
-                                        vote
-                                      ) => `
+                                      (vote) => `
                                         <span class="vote-chip">
                                           R${escapeHtml(
                                             vote.round
@@ -1434,8 +1924,7 @@ function renderDashboard(rows) {
 
                         <td>
                           ${formatSeconds(
-                            row.durationSeconds ||
-                              0
+                            row.durationSeconds
                           )}
                         </td>
 
@@ -1443,7 +1932,7 @@ function renderDashboard(rows) {
                           ${escapeHtml(
                             formatDate(
                               row.submittedAt ||
-                                row.savedAt
+                              row.savedAt
                             )
                           )}
                         </td>
@@ -1468,14 +1957,18 @@ function renderDashboard(rows) {
 }
 
 document
-  .getElementById("startButton")
+  .getElementById(
+    "startButton"
+  )
   ?.addEventListener(
     "click",
     startGame
   );
 
 document
-  .getElementById("nameInput")
+  .getElementById(
+    "nameInput"
+  )
   ?.addEventListener(
     "keydown",
     (event) => {
@@ -1489,7 +1982,9 @@ document
   );
 
 document
-  .getElementById("restartButton")
+  .getElementById(
+    "restartButton"
+  )
   ?.addEventListener(
     "click",
     () => {
@@ -1504,7 +1999,8 @@ document
         );
 
       if (input) {
-        input.value = "";
+        input.value =
+          "";
       }
 
       if (error) {
@@ -1519,28 +2015,36 @@ document
   );
 
 document
-  .getElementById("devButton")
+  .getElementById(
+    "devButton"
+  )
   ?.addEventListener(
     "click",
     () => {
-      showScreen(
-        auth?.currentUser &&
-          !auth.currentUser.isAnonymous
-          ? "dashboard"
-          : "devLogin"
-      );
+      const user =
+        auth?.currentUser;
 
       if (
-        auth?.currentUser &&
-        !auth.currentUser.isAnonymous
+        user &&
+        !user.isAnonymous
       ) {
+        showScreen(
+          "dashboard"
+        );
+
         loadDashboard();
+      } else {
+        showScreen(
+          "devLogin"
+        );
       }
     }
   );
 
 document
-  .getElementById("backHomeButton")
+  .getElementById(
+    "backHomeButton"
+  )
   ?.addEventListener(
     "click",
     () => {
@@ -1551,14 +2055,18 @@ document
   );
 
 document
-  .getElementById("devLoginButton")
+  .getElementById(
+    "devLoginButton"
+  )
   ?.addEventListener(
     "click",
     loginDev
   );
 
 document
-  .getElementById("devPassword")
+  .getElementById(
+    "devPassword"
+  )
   ?.addEventListener(
     "keydown",
     (event) => {
@@ -1572,19 +2080,27 @@ document
   );
 
 document
-  .getElementById("refreshDashboard")
+  .getElementById(
+    "refreshDashboard"
+  )
   ?.addEventListener(
     "click",
     loadDashboard
   );
 
 document
-  .getElementById("logoutButton")
+  .getElementById(
+    "logoutButton"
+  )
   ?.addEventListener(
     "click",
     async () => {
       try {
-        await signOut(auth);
+        if (auth) {
+          await signOut(
+            auth
+          );
+        }
       } catch (error) {
         console.error(
           "Logout failed:",
@@ -1603,13 +2119,14 @@ if (auth) {
     auth,
     (user) => {
       if (
-        user &&
-        !user.isAnonymous &&
+        !user &&
         screens.dashboard?.classList.contains(
           "active"
         )
       ) {
-        loadDashboard();
+        showScreen(
+          "devLogin"
+        );
       }
     }
   );
