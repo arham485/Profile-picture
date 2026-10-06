@@ -1,6 +1,20 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
-import { getFirestore, addDoc, collection, getDocs, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+import {
+  getAuth,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
+import {
+  getFirestore,
+  addDoc,
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 import { SITE_CONFIG } from "./firebase-config.js";
 
 const screens = {
@@ -36,23 +50,23 @@ const state = {
   roundMatches: 0,
   completedMatches: 0,
   finalWinner: null,
-  responseSaved: false,
-  choosing: false
+  responseSaved: false
 };
 
 let firebaseReady = false;
 let db = null;
 let auth = null;
-let anonymousSessionPromise = null;
+
+const firebaseConfig = SITE_CONFIG?.firebase;
 
 if (
-  SITE_CONFIG?.firebase?.apiKey &&
-  SITE_CONFIG.firebase.projectId &&
-  !SITE_CONFIG.firebase.apiKey.includes("YOUR_") &&
-  !SITE_CONFIG.firebase.projectId.includes("YOUR_")
+  firebaseConfig?.apiKey &&
+  firebaseConfig?.projectId &&
+  !firebaseConfig.apiKey.includes("YOUR_") &&
+  !firebaseConfig.projectId.includes("YOUR_")
 ) {
   try {
-    const firebaseApp = initializeApp(SITE_CONFIG.firebase);
+    const firebaseApp = initializeApp(firebaseConfig);
     auth = getAuth(firebaseApp);
     db = getFirestore(firebaseApp);
     firebaseReady = true;
@@ -61,18 +75,65 @@ if (
   }
 }
 
+function createLocalSessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function ensureAnonymousSession() {
+  if (!firebaseReady || !auth) {
+    return null;
+  }
+
+  if (auth.currentUser?.isAnonymous) {
+    state.sessionId = auth.currentUser.uid;
+    return auth.currentUser;
+  }
+
+  if (auth.currentUser && !auth.currentUser.isAnonymous) {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Could not switch to anonymous session:", error);
+      return null;
+    }
+  }
+
+  try {
+    const credential = await signInAnonymously(auth);
+    state.sessionId = credential.user.uid;
+    return credential.user;
+  } catch (error) {
+    console.error("Anonymous Firebase sign-in failed:", error);
+    return null;
+  }
+}
+
 function showScreen(key) {
-  Object.values(screens).forEach((screen) => screen?.classList.remove("active"));
-  screens[key]?.classList.add("active");
+  Object.values(screens).forEach((screen) => {
+    if (screen) {
+      screen.classList.remove("active");
+    }
+  });
+
+  if (screens[key]) {
+    screens[key].classList.add("active");
+  }
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function shuffle(items) {
   const array = [...items];
+
   for (let i = array.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [array[i], array[j]] = [array[j], array[i]];
   }
+
   return array;
 }
 
@@ -97,14 +158,8 @@ function escapeHtml(value) {
   })[char]);
 }
 
-function formatDate(value) {
-  if (!value) return "—";
-  if (typeof value.toDate === "function") return value.toDate().toLocaleString();
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
-}
-
 function makePlaceholder(label) {
+  const safeLabel = escapeHtml(label);
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="900" height="900">
       <defs>
@@ -116,10 +171,11 @@ function makePlaceholder(label) {
       <rect width="900" height="900" fill="url(#g)"/>
       <circle cx="450" cy="340" r="120" fill="#7357e8" opacity=".18"/>
       <path d="M160 700c80-170 500-170 580 0" fill="#7357e8" opacity=".15"/>
-      <text x="450" y="470" text-anchor="middle" font-family="Arial, sans-serif" font-size="46" font-weight="700" fill="#161514">${escapeHtml(label)}</text>
+      <text x="450" y="470" text-anchor="middle" font-family="Arial, sans-serif" font-size="46" font-weight="700" fill="#161514">${safeLabel}</text>
       <text x="450" y="525" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#74706a">drop your real photo here</text>
     </svg>
   `;
+
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
@@ -128,28 +184,23 @@ function imageErrorFallback(img, photo) {
   img.src = makePlaceholder(photo.label);
 }
 
-async function ensureAnonymousSession() {
-  if (!firebaseReady || !auth) return false;
-  if (auth.currentUser) {
-    state.sessionId = auth.currentUser.uid;
-    return true;
+function formatDate(value) {
+  if (!value) {
+    return "—";
   }
-  if (anonymousSessionPromise) return anonymousSessionPromise;
 
-  anonymousSessionPromise = signInAnonymously(auth)
-    .then((result) => {
-      state.sessionId = result.user.uid;
-      return true;
-    })
-    .catch((error) => {
-      console.error("Anonymous authentication failed:", error);
-      return false;
-    })
-    .finally(() => {
-      anonymousSessionPromise = null;
-    });
+  if (typeof value.toDate === "function") {
+    const date = value.toDate();
+    return date.toLocaleString();
+  }
 
-  return anonymousSessionPromise;
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleString();
 }
 
 async function startGame() {
@@ -176,13 +227,14 @@ async function startGame() {
   }
 
   if (firebaseReady) {
-    const signedIn = await ensureAnonymousSession();
-    if (!signedIn) {
-      error.textContent = "Couldn't start the game right now. Try again.";
+    const user = await ensureAnonymousSession();
+
+    if (!user || !user.isAnonymous) {
+      error.textContent = "Couldn't connect to the voting system. Try again.";
       return;
     }
   } else {
-    state.sessionId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    state.sessionId = createLocalSessionId();
   }
 
   state.name = name;
@@ -192,14 +244,60 @@ async function startGame() {
   state.nextRound = [];
   state.currentPair = null;
   state.votes = [];
-  state.roundMatches = Math.ceil(state.matchQueue.length / 2);
   state.completedMatches = 0;
+  state.roundMatches = Math.ceil(state.matchQueue.length / 2);
   state.finalWinner = null;
   state.responseSaved = false;
-  state.choosing = false;
 
   showScreen("battle");
   runNextMatch();
+}
+
+function beginRoundIfNeeded() {
+  if (state.matchQueue.length === 1) {
+    state.nextRound.push(state.matchQueue.shift());
+    finishOrAdvance();
+    return;
+  }
+
+  if (state.matchQueue.length === 0) {
+    state.matchQueue = state.nextRound;
+    state.nextRound = [];
+    state.currentRound += 1;
+
+    if (state.matchQueue.length === 1) {
+      state.finalWinner = state.matchQueue[0];
+      showWinner();
+      return;
+    }
+
+    state.roundMatches = Math.ceil(state.matchQueue.length / 2);
+  }
+}
+
+function runNextMatch() {
+  beginRoundIfNeeded();
+
+  if (state.finalWinner) {
+    return;
+  }
+
+  const first = state.matchQueue.shift();
+  const second = state.matchQueue.shift();
+
+  if (!first) {
+    finishOrAdvance();
+    return;
+  }
+
+  if (!second) {
+    state.nextRound.push(first);
+    finishOrAdvance();
+    return;
+  }
+
+  state.currentPair = { first, second };
+  renderBattle();
 }
 
 function finishOrAdvance() {
@@ -221,38 +319,10 @@ function finishOrAdvance() {
   runNextMatch();
 }
 
-function runNextMatch() {
-  if (state.finalWinner) return;
-
-  if (state.matchQueue.length === 1) {
-    state.nextRound.push(state.matchQueue.shift());
-    finishOrAdvance();
-    return;
-  }
-
-  const first = state.matchQueue.shift();
-  const second = state.matchQueue.shift();
-
-  if (!first) {
-    finishOrAdvance();
-    return;
-  }
-
-  if (!second) {
-    state.nextRound.push(first);
-    finishOrAdvance();
-    return;
-  }
-
-  state.currentPair = { first, second };
-  state.choosing = false;
-  renderBattle();
-}
-
 function chooseWinner(winnerId) {
-  if (!state.currentPair || state.choosing) return;
-
-  state.choosing = true;
+  if (!state.currentPair) {
+    return;
+  }
 
   const { first, second } = state.currentPair;
   const winner = winnerId === first.id ? first : second;
@@ -272,14 +342,24 @@ function chooseWinner(winnerId) {
   state.completedMatches += 1;
   state.currentPair = null;
 
-  const button = document.querySelector(`[data-photo-id="${winner.id}"]`);
-  button?.classList.add("picked");
+  const buttons = document.querySelectorAll("[data-photo-id]");
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
 
-  setTimeout(() => finishOrAdvance(), 180);
+  const button = document.querySelector(`[data-photo-id="${winner.id}"]`);
+  if (button) {
+    button.classList.add("picked");
+  }
+
+  setTimeout(() => {
+    finishOrAdvance();
+  }, 180);
 }
 
 function renderBattle() {
   document.getElementById("roundLabel").textContent = roundName(state.currentRound);
+
   document.getElementById("battleTitle").textContent =
     state.currentRound === 1
       ? "Okay, judge this."
@@ -289,6 +369,7 @@ function renderBattle() {
 
   const totalMatches = state.roundMatches || 1;
   const currentInRound = (state.completedMatches % totalMatches) + 1;
+
   document.getElementById("progressText").textContent = `${currentInRound} / ${totalMatches}`;
   document.getElementById("progressBar").style.width = `${Math.min(100, (currentInRound / totalMatches) * 100)}%`;
 
@@ -305,7 +386,6 @@ function renderBattle() {
     img.src = photo.src;
     img.alt = photo.label;
     img.loading = index === 0 ? "eager" : "lazy";
-    img.addEventListener("error", (event) => imageErrorFallback(event.currentTarget, photo));
 
     const meta = document.createElement("div");
     meta.className = "photo-meta";
@@ -318,17 +398,27 @@ function renderBattle() {
     tag.className = "vote-tag";
     tag.textContent = "pick me";
 
-    meta.append(label, tag);
-    button.append(img, meta);
+    meta.appendChild(label);
+    meta.appendChild(tag);
+    button.appendChild(img);
+    button.appendChild(meta);
+
+    img.addEventListener("error", (event) => {
+      imageErrorFallback(event.currentTarget, photo);
+    });
+
     button.addEventListener("click", () => chooseWinner(photo.id));
+
     grid.appendChild(button);
   });
 }
 
 function showWinner() {
-  if (!state.finalWinner) return;
+  if (!state.finalWinner) {
+    return;
+  }
 
-  const elapsed = (Date.now() - state.startedAt) / 1000;
+  const elapsed = Math.max(0, (Date.now() - state.startedAt) / 1000);
   const winner = state.finalWinner;
 
   document.getElementById("finishName").textContent = state.name;
@@ -341,7 +431,6 @@ function showWinner() {
   const img = document.createElement("img");
   img.src = winner.src;
   img.alt = winner.label;
-  img.addEventListener("error", (event) => imageErrorFallback(event.currentTarget, winner));
 
   const caption = document.createElement("div");
   caption.className = "winner-caption";
@@ -352,8 +441,14 @@ function showWinner() {
   const champion = document.createElement("span");
   champion.textContent = "🏆 champion";
 
-  caption.append(label, champion);
-  card.append(img, caption);
+  caption.appendChild(label);
+  caption.appendChild(champion);
+  card.appendChild(img);
+  card.appendChild(caption);
+
+  img.addEventListener("error", (event) => {
+    imageErrorFallback(event.currentTarget, winner);
+  });
 
   showScreen("winner");
   saveResponse(elapsed);
@@ -363,29 +458,38 @@ function buildResponsePayload(elapsed) {
   return {
     name: state.name,
     sessionId: state.sessionId,
-    durationSeconds: Math.max(0, Math.round(elapsed)),
+    submittedAt: null,
+    durationSeconds: Math.round(elapsed),
     totalPhotos: photoManifest.length,
     finalWinnerId: state.finalWinner?.id ?? null,
     finalWinnerLabel: state.finalWinner?.label ?? null,
     votes: state.votes,
-    eliminatedByRound: state.votes.map((vote) => `${vote.loserLabel} lost to ${vote.winnerLabel} in Round ${vote.round}`),
-    browser: navigator.userAgent.slice(0, 500),
-    platform: navigator.platform.slice(0, 100),
-    language: navigator.language.slice(0, 50),
-    screen: `${window.innerWidth}x${window.innerHeight}`.slice(0, 30),
-    referrer: document.referrer ? document.referrer.slice(0, 2048) : null
+    eliminatedByRound: state.votes.map(
+      (vote) => `${vote.loserLabel} lost to ${vote.winnerLabel} in Round ${vote.round}`
+    ),
+    browser: navigator.userAgent,
+    platform: navigator.platform,
+    language: navigator.language,
+    screen: `${window.innerWidth}x${window.innerHeight}`,
+    referrer: document.referrer || null
   };
 }
 
 async function saveResponse(elapsed) {
-  if (state.responseSaved) return;
+  if (state.responseSaved) {
+    return;
+  }
+
   state.responseSaved = true;
 
   const status = document.getElementById("saveStatus");
   const payload = buildResponsePayload(elapsed);
 
   try {
-    localStorage.setItem(`pfp_response_${payload.sessionId}`, JSON.stringify(payload));
+    localStorage.setItem(
+      `pfp_response_${payload.sessionId || createLocalSessionId()}`,
+      JSON.stringify({ ...payload, submittedAt: new Date().toISOString() })
+    );
   } catch (error) {
     console.warn("Local storage save failed:", error);
   }
@@ -395,19 +499,29 @@ async function saveResponse(elapsed) {
 
   if (firebaseReady && db && auth) {
     try {
-      if (!auth.currentUser || !auth.currentUser.isAnonymous) {
-        await ensureAnonymousSession();
-      }
+      const user = await ensureAnonymousSession();
 
-      if (!auth.currentUser || !auth.currentUser.isAnonymous) {
+      if (!user || !user.isAnonymous) {
         throw new Error("No anonymous Firebase session is available.");
       }
 
-      payload.sessionId = auth.currentUser.uid;
+      payload.sessionId = user.uid;
 
       await addDoc(collection(db, "responses"), {
-        ...payload,
+        name: payload.name,
+        sessionId: payload.sessionId,
         submittedAt: serverTimestamp(),
+        durationSeconds: payload.durationSeconds,
+        totalPhotos: payload.totalPhotos,
+        finalWinnerId: payload.finalWinnerId,
+        finalWinnerLabel: payload.finalWinnerLabel,
+        votes: payload.votes,
+        eliminatedByRound: payload.eliminatedByRound,
+        browser: payload.browser,
+        platform: payload.platform,
+        language: payload.language,
+        screen: payload.screen,
+        referrer: payload.referrer,
         savedAt: serverTimestamp()
       });
 
@@ -417,7 +531,9 @@ async function saveResponse(elapsed) {
     }
   }
 
-  if (SITE_CONFIG.formspreeEndpoint && !SITE_CONFIG.formspreeEndpoint.includes("YOUR_FORM_ID")) {
+  const endpoint = SITE_CONFIG?.formspreeEndpoint;
+
+  if (endpoint && !endpoint.includes("YOUR_FORM_ID")) {
     try {
       const formData = new FormData();
       formData.append("name", payload.name);
@@ -426,9 +542,12 @@ async function saveResponse(elapsed) {
       formData.append("durationSeconds", String(payload.durationSeconds));
       formData.append("totalPhotos", String(payload.totalPhotos));
       formData.append("eliminations", payload.eliminatedByRound.join(" | "));
-      formData.append("responsesJSON", JSON.stringify(payload, null, 2));
+      formData.append(
+        "responsesJSON",
+        JSON.stringify({ ...payload, submittedAt: new Date().toISOString() }, null, 2)
+      );
 
-      const response = await fetch(SITE_CONFIG.formspreeEndpoint, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { Accept: "application/json" },
         body: formData
@@ -446,15 +565,24 @@ async function saveResponse(elapsed) {
     status.textContent = "Saved. Your verdict is in the scoreboard.";
   } else if (emailSent) {
     status.textContent = "Sent. Your verdict has officially been delivered 👀";
+  } else if (!firebaseReady && !endpoint) {
+    status.textContent = "Verdict saved on this browser.";
+  } else if (!firestoreSaved && firebaseReady) {
+    status.textContent = "Email sent, but the scoreboard could not save your vote.";
   } else {
-    status.textContent = "Verdict saved on this browser. Firebase or Formspree is not available right now.";
+    status.textContent = "Your verdict could not be delivered. Try again.";
   }
 }
 
 function openDevMode() {
   showScreen("devLogin");
+
   const error = document.getElementById("devError");
-  error.textContent = firebaseReady ? "" : "Developer mode needs Firebase configured first.";
+  error.textContent = "";
+
+  if (!firebaseReady || !auth) {
+    error.textContent = "Developer mode needs Firebase configured first.";
+  }
 }
 
 async function loginDev() {
@@ -475,19 +603,12 @@ async function loginDev() {
   }
 
   try {
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-
-    if (!credential.user || credential.user.isAnonymous) {
-      await signOut(auth);
-      await ensureAnonymousSession();
-      throw new Error("Developer authentication was not accepted.");
-    }
-
+    await signInWithEmailAndPassword(auth, email, password);
     showScreen("dashboard");
     await loadDashboard();
-  } catch (err) {
-    console.error("Developer login failed:", err);
-    error.textContent = "Login failed. Check your developer email and password.";
+  } catch (errorObject) {
+    console.error("Developer login failed:", errorObject);
+    error.textContent = "Login failed. Check your email and password.";
   }
 }
 
@@ -496,8 +617,17 @@ async function loadDashboard() {
   const trends = document.getElementById("dashboardTrends");
   const responses = document.getElementById("dashboardResponses");
 
-  if (!firebaseReady || !db || !auth?.currentUser || auth.currentUser.isAnonymous) {
-    summary.innerHTML = `<div class="empty-state">Developer access is not active.</div>`;
+  if (!firebaseReady || !db || !auth) {
+    summary.innerHTML = `<div class="empty-state">Firebase is not configured.</div>`;
+    trends.innerHTML = "";
+    responses.innerHTML = "";
+    return;
+  }
+
+  const user = auth.currentUser;
+
+  if (!user || user.isAnonymous) {
+    summary.innerHTML = `<div class="empty-state">Developer authentication is required.</div>`;
     trends.innerHTML = "";
     responses.innerHTML = "";
     return;
@@ -506,12 +636,15 @@ async function loadDashboard() {
   summary.innerHTML = `<div class="empty-state">Loading votes…</div>`;
 
   try {
-    const snap = await getDocs(query(collection(db, "responses"), orderBy("savedAt", "desc")));
+    const snap = await getDocs(
+      query(collection(db, "responses"), orderBy("savedAt", "desc"))
+    );
+
     const rows = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     renderDashboard(rows);
   } catch (error) {
     console.error("Dashboard load failed:", error);
-    summary.innerHTML = `<div class="empty-state">Could not load responses. Check your developer UID in Firestore Rules.</div>`;
+    summary.innerHTML = `<div class="empty-state">Could not load responses. Check your Firebase rules and developer account.</div>`;
     trends.innerHTML = "";
     responses.innerHTML = "";
   }
@@ -522,10 +655,12 @@ function renderDashboard(rows) {
   const trends = document.getElementById("dashboardTrends");
   const responses = document.getElementById("dashboardResponses");
 
-  const photoStats = Object.fromEntries(photoManifest.map((photo) => [
-    photo.id,
-    { label: photo.label, wins: 0, losses: 0, finals: 0, appearances: 0 }
-  ]));
+  const photoStats = Object.fromEntries(
+    photoManifest.map((photo) => [
+      photo.id,
+      { label: photo.label, wins: 0, losses: 0, finals: 0, appearances: 0 }
+    ])
+  );
 
   let totalMatches = 0;
 
@@ -568,9 +703,11 @@ function renderDashboard(rows) {
   const stats = Object.values(photoStats)
     .map((item) => ({
       ...item,
-      winRate: item.appearances ? Math.round((item.wins / item.appearances) * 100) : 0
+      winRate: item.appearances
+        ? Math.round((item.wins / item.appearances) * 100)
+        : 0
     }))
-    .sort((a, b) => (b.wins - a.wins) || (b.winRate - a.winRate));
+    .sort((a, b) => b.wins - a.wins || b.winRate - a.winRate);
 
   const topPhoto = stats[0];
 
@@ -649,26 +786,36 @@ function renderDashboard(rows) {
 }
 
 document.getElementById("startButton").addEventListener("click", startGame);
+
 document.getElementById("nameInput").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") startGame();
+  if (event.key === "Enter") {
+    startGame();
+  }
 });
+
 document.getElementById("restartButton").addEventListener("click", () => {
   document.getElementById("nameInput").value = "";
   document.getElementById("nameError").textContent = "";
   showScreen("start");
 });
+
 document.getElementById("devButton").addEventListener("click", openDevMode);
+
 document.getElementById("backHomeButton").addEventListener("click", () => showScreen("start"));
+
 document.getElementById("devLoginButton").addEventListener("click", loginDev);
+
 document.getElementById("refreshDashboard").addEventListener("click", loadDashboard);
+
 document.getElementById("logoutButton").addEventListener("click", async () => {
   try {
     await signOut(auth);
+    showScreen("start");
+    await ensureAnonymousSession();
   } catch (error) {
     console.error("Logout failed:", error);
+    showScreen("start");
   }
-  showScreen("start");
-  await ensureAnonymousSession();
 });
 
 if (auth) {
@@ -679,8 +826,8 @@ if (auth) {
       showScreen("devLogin");
     }
   });
-}
 
-if (firebaseReady) {
   ensureAnonymousSession();
+} else {
+  state.sessionId = createLocalSessionId();
 }
