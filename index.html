@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f7f4ef" />
+
+  <title>PFP Project 2026</title>
+  <meta
+    name="description"
+    content="A tiny photo tournament. Pick the profile picture that deserves the spot."
+  />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      PFP PROJECT 2026
+    </div>
+
+    <button id="devButton" class="text-button" type="button">
+      dev mode
+    </button>
+  </header>
+
+  <main class="shell">
+
+    <section id="startScreen" class="screen active">
+      <div class="hero-kicker">
+        Vote Now Get Nothing😂
+      </div>
+
+      <h1>
+        Pick the one<br />
+        <em>that deserves the PFP</em>
+      </h1>
+
+      <p class="hero-subtitle">
+        Which photo should actually get the profile picture?
+      </p>
+
+      <h4 class="name-row">
+        I would like to thank SuperSimple dev for the amazing tutorial,
+        Google for the FONT, and GPT for the polish of the website.
+      </h4>
+
+      <div class="name-card">
+        <label for="nameInput">
+          First... who are you?
+        </label>
+
+        <div class="name-row">
+          <input
+            id="nameInput"
+            maxlength="40"
+            autocomplete="name"
+            placeholder="Your name..."
+          />
+
+          <button
+            id="startButton"
+            class="primary-button"
+            type="button"
+          >
+            Let's go →
+          </button>
+        </div>
+
+        <p id="nameError" class="field-error"></p>
+      </div>
+
+      <div class="how-card">
+        <div class="how-icon">VS</div>
+
+        <div>
+          <strong>Simple rules.</strong>
+          <span>
+            Two photos enter. One moves on. Repeat until theres one last remaining.
+          </span>
+        </div>
+      </div>
+
+      <div class="how-card">
+        <div class="how-icon">IDEA</div>
+
+        <div>
+          <strong>THE IDEA</strong>
+          <span>
+            See... if you like this Website/Idea made by me,
+            just dm me and i will make one for you
+          </span>
+        </div>
+      </div>
+    </section>
+
+
+    <section id="battleScreen" class="screen">
+      <div class="battle-top">
+        <div>
+          <div id="roundLabel" class="hero-kicker">
+            ROUND 1
+          </div>
+
+          <h2 id="battleTitle">
+            Okay, judge this.
+          </h2>
+        </div>
+
+        <div class="progress-wrap">
+          <span id="progressText">
+            1 / 4
+          </span>
+
+          <div class="progress-track">
+            <div
+              id="progressBar"
+              class="progress-bar"
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <p class="battle-question">
+        Which looks better as my profile picture?
+      </p>
+
+      <div
+        id="battleGrid"
+        class="battle-grid"
+      ></div>
+
+      <div class="battle-hint">
+        Tap a photo to eliminate the other one.
+      </div>
+    </section>
+
+
+    <section id="winnerScreen" class="screen">
+      <div class="winner-kicker">
+        WE HAVE A WINNER.
+      </div>
+
+      <h2>
+        So this is the<br />
+        <em>one, huh?</em>
+      </h2>
+
+      <p class="winner-subtitle">
+        Your pick survived every round.
+      </p>
+
+      <div
+        id="winnerCard"
+        class="winner-card"
+      ></div>
+
+      <div class="finish-card">
+        <div class="finish-line">
+          <span>Your Name</span>
+          <strong id="finishName">—</strong>
+        </div>
+
+        <div class="finish-line">
+          <span>Photos judged</span>
+          <strong id="finishCount">—</strong>
+        </div>
+
+        <div class="finish-line">
+          <span>Time taken</span>
+          <strong id="finishTime">—</strong>
+        </div>
+      </div>
+
+      <p id="saveStatus" class="save-status">
+        Saving your decision…
+      </p>
+
+      <button
+        id="restartButton"
+        class="secondary-button"
+        type="button"
+      >
+        firse karna hai??
+      </button>
+    </section>
+
+
+    <section
+      id="devLoginScreen"
+      class="screen narrow-screen"
+    >
+      <div class="dev-badge">
+        developer mode
+      </div>
+
+      <h2>
+        For ME
+      </h2>
+
+      <p class="hero-subtitle">
+        See which photos are winning across every submitted vote.
+      </p>
+
+      <div class="name-card">
+        <label for="devEmail">
+          Developer email
+        </label>
+
+        <input
+          id="devEmail"
+          type="email"
+          autocomplete="username"
+          placeholder="you@example.com"
+        />
+
+        <label
+          for="devPassword"
+          class="spaced-label"
+        >
+          Password
+        </label>
+
+        <input
+          id="devPassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="••••••••"
+        />
+
+        <button
+          id="devLoginButton"
+          class="primary-button full-button"
+          type="button"
+        >
+          Open dashboard →
+        </button>
+
+        <p
+          id="devError"
+          class="field-error"
+        ></p>
+      </div>
+
+      <button
+        id="backHomeButton"
+        class="text-button center-button"
+        type="button"
+      >
+        ← back
+      </button>
+    </section>
+
+
+    <section
+      id="dashboardScreen"
+      class="screen dashboard-screen"
+    >
+      <div class="dashboard-head">
+        <div>
+          <div class="dev-badge">
+            DEVELOPER MODE
+          </div>
+
+          <h2>
+            The PFP scoreboard.
+          </h2>
+
+          <p class="hero-subtitle">
+            Live-ish trends from stored votes.
+          </p>
+        </div>
+
+        <div class="dashboard-actions">
+          <button
+            id="refreshDashboard"
+            class="secondary-button"
+            type="button"
+          >
+            Refresh
+          </button>
+
+          <button
+            id="logoutButton"
+            class="text-button"
+            type="button"
+          >
+            log out
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="dashboardSummary"
+        class="stats-grid"
+      ></div>
+
+      <div
+        id="dashboardTrends"
+        class="trend-section"
+      ></div>
+
+      <div
+        id="dashboardResponses"
+        class="responses-section"
+      ></div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>
+      made for Close Friends only😘💕
+    </span>
+  </footer>
+
+  <script
+    type="module"
+    src="app.js"
+  ></script>
+</body>
+</html>

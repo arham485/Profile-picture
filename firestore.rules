@@ -1,0 +1,148 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function validPhoto(photoId, photoLabel) {
+      return
+        (photoId == 'photo-1' && photoLabel == 'Photo 01') ||
+        (photoId == 'photo-2' && photoLabel == 'Photo 02') ||
+        (photoId == 'photo-3' && photoLabel == 'Photo 03') ||
+        (photoId == 'photo-4' && photoLabel == 'Photo 04') ||
+        (photoId == 'photo-5' && photoLabel == 'Photo 05') ||
+        (photoId == 'photo-6' && photoLabel == 'Photo 06') ||
+        (photoId == 'photo-7' && photoLabel == 'Photo 07') ||
+        (photoId == 'photo-8' && photoLabel == 'Photo 08') ||
+        (photoId == 'photo-9' && photoLabel == 'Photo 09') ||
+        (photoId == 'photo-10' && photoLabel == 'Photo 10');
+    }
+
+    function validVote(vote) {
+      return
+        vote.keys().hasOnly([
+          'round',
+          'match',
+          'winnerId',
+          'winnerLabel',
+          'loserId',
+          'loserLabel',
+          'timestamp'
+        ])
+        && vote.keys().hasAll([
+          'round',
+          'match',
+          'winnerId',
+          'winnerLabel',
+          'loserId',
+          'loserLabel',
+          'timestamp'
+        ])
+        && vote.round is number
+        && vote.round >= 1
+        && vote.round <= 4
+        && vote.match is number
+        && vote.match >= 1
+        && vote.match <= 9
+        && vote.winnerId is string
+        && vote.loserId is string
+        && vote.winnerLabel is string
+        && vote.loserLabel is string
+        && vote.timestamp is string
+        && vote.timestamp.size() >= 10
+        && vote.timestamp.size() <= 40
+        && vote.winnerId != vote.loserId
+        && validPhoto(vote.winnerId, vote.winnerLabel)
+        && validPhoto(vote.loserId, vote.loserLabel);
+    }
+
+    match /responses/{responseId} {
+      allow create: if
+        request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'anonymous'
+        && request.resource.data.sessionId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'name',
+          'sessionId',
+          'submittedAt',
+          'durationSeconds',
+          'totalPhotos',
+          'finalWinnerId',
+          'finalWinnerLabel',
+          'votes',
+          'eliminatedByRound',
+          'browser',
+          'platform',
+          'language',
+          'screen',
+          'referrer',
+          'savedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'name',
+          'sessionId',
+          'submittedAt',
+          'durationSeconds',
+          'totalPhotos',
+          'finalWinnerId',
+          'finalWinnerLabel',
+          'votes',
+          'eliminatedByRound',
+          'browser',
+          'platform',
+          'language',
+          'screen',
+          'referrer',
+          'savedAt'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() >= 10
+        && request.resource.data.sessionId.size() <= 128
+        && request.resource.data.submittedAt is timestamp
+        && request.resource.data.savedAt is timestamp
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.savedAt == request.time
+        && request.resource.data.durationSeconds is number
+        && request.resource.data.durationSeconds >= 0
+        && request.resource.data.durationSeconds <= 86400
+        && request.resource.data.totalPhotos == 10
+        && request.resource.data.finalWinnerId is string
+        && request.resource.data.finalWinnerLabel is string
+        && validPhoto(request.resource.data.finalWinnerId, request.resource.data.finalWinnerLabel)
+        && request.resource.data.votes is list
+        && request.resource.data.votes.size() == 9
+        && validVote(request.resource.data.votes[0])
+        && validVote(request.resource.data.votes[1])
+        && validVote(request.resource.data.votes[2])
+        && validVote(request.resource.data.votes[3])
+        && validVote(request.resource.data.votes[4])
+        && validVote(request.resource.data.votes[5])
+        && validVote(request.resource.data.votes[6])
+        && validVote(request.resource.data.votes[7])
+        && validVote(request.resource.data.votes[8])
+        && request.resource.data.eliminatedByRound is list
+        && request.resource.data.eliminatedByRound.size() == 9
+        && request.resource.data.browser is string
+        && request.resource.data.browser.size() <= 500
+        && request.resource.data.platform is string
+        && request.resource.data.platform.size() <= 100
+        && request.resource.data.language is string
+        && request.resource.data.language.size() <= 50
+        && request.resource.data.screen is string
+        && request.resource.data.screen.size() <= 30
+        && (request.resource.data.referrer == null || (request.resource.data.referrer is string && request.resource.data.referrer.size() <= 2048));
+
+      allow read: if
+        request.auth != null
+        && request.auth.uid == '0aEFkeM2yBShDEDaztRRGeejIOw1'
+        && request.auth.token.firebase.sign_in_provider == 'password';
+
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
